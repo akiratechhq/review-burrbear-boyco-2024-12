@@ -1,0 +1,12 @@
+{
+    "project_name": "Project name",
+    "client_name": "Client name",
+    "review_period": "2 weeks",
+    "date_interval": "October 15 to November 15, 2020",
+    "person_days": "5",
+    "template": "./Readme.md.mustache",
+    "issue_overview_path": "./static/issue_overview.png",
+    "date": "December 2024",
+    "commit_hash": "5895710ebabc0cb1b370b0414e17980d93f1c27c",
+    "source_repository": "https://github.com/burrbear-dev/boyco-flow"
+}

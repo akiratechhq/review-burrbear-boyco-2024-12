@@ -1,4 +1,8 @@
 {
   "solidity.packageDefaultDependenciesContractsDirectory": "",
-  "solidity.packageDefaultDependenciesDirectory": "code/node_modules"
+  "solidity.packageDefaultDependenciesDirectory": "code/node_modules",
+  "cSpell.words": [
+    "Beraborrow",
+    "nect"
+  ]
 }

@@ -15,7 +15,7 @@
                </span>
                <br />
                <span class="details-value">
-                    Xave
+                    Burrbear
                </span>
                <br />
                <span class="splash-title">
@@ -46,9 +46,11 @@
  - [Executive summary](#executive-summary)
      - [Project handover](#project-handover)
      - [Day 1](#day-1)
+     - [Review handover](#review-handover)
  - [Scope](#scope)
  - [Recommendations](#recommendations)
  - [Issues](#issues)
+     - [deposit() function vulnerable to sandwich attacks](#deposit-function-vulnerable-to-sandwich-attacks)
      - [Add array length validation in _splitAmounts](#add-array-length-validation-in-_splitamounts)
      - [Return variables not checked from transferFrom](#return-variables-not-checked-from-transferfrom)
      - [Strengthen pool token validation in BoycoBurrZap constructor](#strengthen-pool-token-validation-in-boycoburrzap-constructor)
@@ -67,7 +69,7 @@
 
 ## Details
 
-- **Client** Xave
+- **Client** Burrbear
 - **Date** December 2024
 - **Lead reviewer** Daniel Luca ([@cleanunicorn](https://twitter.com/cleanunicorn))
 - **Reviewers** Daniel Luca ([@cleanunicorn](https://twitter.com/cleanunicorn))
@@ -84,20 +86,22 @@
 
 | SEVERITY       |    OPEN    |    CLOSED    |
 |----------------|:----------:|:------------:|
-|  Informational  |  2  |  0  |
-|  Minor  |  2  |  0  |
-|  Medium  |  3  |  0  |
-|  Major  |  0  |  0  |
+|  Informational  |  0  |  2  |
+|  Minor  |  0  |  2  |
+|  Medium  |  0  |  3  |
+|  Major  |  0  |  1  |
 
 ## Executive summary
 
-This report represents the results of the engagement with **Xave** to review **BoycoBurrZap**.
+This report represents the results of the engagement with **Burrbear** to review **BoycoBurrZap**.
 
 The review was conducted over the course of **1 day** during **December 29, 2024**. A total of **1 person-days** were spent reviewing the code.
 
 ### Project handover
 
 I spent an approximate of 2 hours reviewing the current state of the project and the codebase. I identified a few small issues that would help create a more defensive codebase.
+
+Additionally we discussed some assumptions about the deposit mechanics, specifically if the deposit is sandwitched between transactions that would imbalance the pool substantially.
 
 This time was critical because it allowed us to understand the project and the codebase before starting the review.
 
@@ -106,6 +110,10 @@ This time was critical because it allowed us to understand the project and the c
 I spent the first day reviewing the codebase and the project. I focused on manually reviewing the codebase, searching for security issues such as, but not limited to, re-entrancy problems, transaction ordering, block timestamp dependency, exception handling, call stack depth limitation, integer overflow/underflow, self-destructible contracts, unsecured balance, use of origin, costly gas patterns, architectural problems, code readability.
 
 In parallel, I checked the Balancer V2 implementation to see if it matches the codebase.
+
+### Review handover
+
+We discussed any open questions and issues we found during the review. Each issue that required a change was fixed in a separate commit. Other issues were acknowledged and don't require any code changes.
 
 ## Scope
 
@@ -126,8 +134,60 @@ I identified a few possible general improvements that are not security issues du
 ## Issues
 
 
-### [Add array length validation in `_splitAmounts`](https://github.com/akiratechhq/review-xave-boyco-2024-12/issues/4)
-![Issue status: Open](https://img.shields.io/static/v1?label=Status&message=Open&color=5856D6&style=flat-square) ![Medium](https://img.shields.io/static/v1?label=Severity&message=Medium&color=FF9500&style=flat-square)
+### [`deposit()` function vulnerable to sandwich attacks](https://github.com/akiratechhq/review-burrbear-boyco-2024-12/issues/8)
+![Issue status: Fixed](https://img.shields.io/static/v1?label=Status&message=Fixed&color=5AC8FA&style=flat-square) ![Major](https://img.shields.io/static/v1?label=Severity&message=Major&color=ff3b30&style=flat-square)
+
+**Description**
+The `deposit()` function in BoycoBurrZap.sol is vulnerable to sandwich attacks due to its reliance on current pool balances to determine deposit ratios. An attacker can manipulate the pool's balance immediately before and after the victim's deposit transaction to profit from the imbalanced state.
+
+Attack flow:
+1. Attacker observes pending deposit transaction
+2. Attacker executes "front-running" transaction to imbalance pool ratios
+3. Victim's deposit executes using manipulated ratios
+4. Attacker executes "back-running" transaction to restore pool balance and extract profit
+
+The vulnerability exists because:
+- Pool ratios are queried at transaction execution time
+- No slippage protection is implemented
+- No minimum output amount is specified in the joinPool call
+- No timelock or other MEV protection mechanisms are in place
+
+**Recommendation**
+Several measures can be implemented to mitigate this risk:
+
+1. Add slippage protection:
+   - Allow users to specify minimum BPT output
+   - Implement maximum deviation checks for pool ratios
+
+2. Use time-weighted average prices (TWAP) instead of spot prices
+
+3. Add deadline parameter to prevent transaction from sitting in mempool
+
+4. Consider implementing commit-reveal scheme for deposits
+
+Example code modification:
+```solidity
+function deposit(
+    uint256 _depositAmount, 
+    address _recipient,
+    uint256 _minBPTOut,
+    uint256 _deadline
+) public onlyWhitelisted {
+    require(block.timestamp <= _deadline, "Transaction expired");
+    // ... existing code ...
+    
+    // Modify _joinPool to use minimum BPT out
+    _joinPool(poolId, tokens, amountsIn, bptIndex, _recipient, _minBPTOut);
+}
+```
+
+
+
+---
+
+
+### [Add array length validation in `_splitAmounts`](https://github.com/akiratechhq/review-burrbear-boyco-2024-12/issues/4)
+![Issue status: Acknowledged](https://img.shields.io/static/v1?label=Status&message=Acknowledged&color=007AFF&style=flat-square) ![Medium](https://img.shields.io/static/v1?label=Severity&message=Medium&color=FF9500&style=flat-square)
 
 **Description**
 The `_splitAmounts` function in BoycoBurrZap.sol takes a `MintParams` struct containing three arrays: `tokens`, `balances`, and `scalingFactors`. Currently, the function assumes these arrays have matching lengths but doesn't explicitly validate this assumption.
@@ -159,8 +219,8 @@ It's unclear if the order and content of (`tokens`, `balances`) versus (`scaling
 ---
 
 
-### [Return variables not checked from `transferFrom`](https://github.com/akiratechhq/review-xave-boyco-2024-12/issues/2)
-![Issue status: Open](https://img.shields.io/static/v1?label=Status&message=Open&color=5856D6&style=flat-square) ![Medium](https://img.shields.io/static/v1?label=Severity&message=Medium&color=FF9500&style=flat-square)
+### [Return variables not checked from `transferFrom`](https://github.com/akiratechhq/review-burrbear-boyco-2024-12/issues/2)
+![Issue status: Fixed](https://img.shields.io/static/v1?label=Status&message=Fixed&color=5AC8FA&style=flat-square) ![Medium](https://img.shields.io/static/v1?label=Severity&message=Medium&color=FF9500&style=flat-square)
 
 **Description**
 The contract currently uses `transferFrom` to transfer tokens from users to the contract. While this works for most ERC20 tokens, some tokens don't implement the ERC20 standard correctly and may not return a boolean value or may revert.
@@ -205,8 +265,8 @@ contract BoycoBurrZap is Ownable {
 ---
 
 
-### [Strengthen pool token validation in `BoycoBurrZap` constructor](https://github.com/akiratechhq/review-xave-boyco-2024-12/issues/1)
-![Issue status: Open](https://img.shields.io/static/v1?label=Status&message=Open&color=5856D6&style=flat-square) ![Medium](https://img.shields.io/static/v1?label=Severity&message=Medium&color=FF9500&style=flat-square)
+### [Strengthen pool token validation in `BoycoBurrZap` constructor](https://github.com/akiratechhq/review-burrbear-boyco-2024-12/issues/1)
+![Issue status: Fixed](https://img.shields.io/static/v1?label=Status&message=Fixed&color=5AC8FA&style=flat-square) ![Medium](https://img.shields.io/static/v1?label=Severity&message=Medium&color=FF9500&style=flat-square)
 
 **Description**
 The current implementation in `BoycoBurrZap.sol` checks if HONEY, NECT, and the base token are present in the pool, but doesn't verify that these (plus the virtual BPT token) are the only tokens in the pool. If additional unexpected tokens are present, the contract might still initialize successfully, potentially leading to incorrect calculations or unexpected behavior.
@@ -247,8 +307,8 @@ This ensures that no unexpected tokens are present in the pool that could affect
 ---
 
 
-### [Add validation for `tokenIndex` in `_splitAmounts`](https://github.com/akiratechhq/review-xave-boyco-2024-12/issues/5)
-![Issue status: Open](https://img.shields.io/static/v1?label=Status&message=Open&color=5856D6&style=flat-square) ![Minor](https://img.shields.io/static/v1?label=Severity&message=Minor&color=FFCC00&style=flat-square)
+### [Add validation for `tokenIndex` in `_splitAmounts`](https://github.com/akiratechhq/review-burrbear-boyco-2024-12/issues/5)
+![Issue status: Acknowledged](https://img.shields.io/static/v1?label=Status&message=Acknowledged&color=007AFF&style=flat-square) ![Minor](https://img.shields.io/static/v1?label=Severity&message=Minor&color=FFCC00&style=flat-square)
 
 **Description**
 In the `_splitAmounts` function, `tokenIndex` is initialized to 0 and only set when the token is found in the loop. However, there's no validation to ensure the token was actually found. If the token isn't found (which shouldn't happen due to constructor checks, but is still a potential issue), the function would continue using the default value of 0, which could lead to incorrect calculations or unexpected behavior.
@@ -298,8 +358,8 @@ function _getTokenIndex(IERC20[] memory tokens) private view returns (uint256) {
 ---
 
 
-### [Add token/ETH recovery methods to BoycoBurrZap](https://github.com/akiratechhq/review-xave-boyco-2024-12/issues/3)
-![Issue status: Open](https://img.shields.io/static/v1?label=Status&message=Open&color=5856D6&style=flat-square) ![Minor](https://img.shields.io/static/v1?label=Severity&message=Minor&color=FFCC00&style=flat-square)
+### [Add token/ETH recovery methods to BoycoBurrZap](https://github.com/akiratechhq/review-burrbear-boyco-2024-12/issues/3)
+![Issue status: Fixed](https://img.shields.io/static/v1?label=Status&message=Fixed&color=5AC8FA&style=flat-square) ![Minor](https://img.shields.io/static/v1?label=Severity&message=Minor&color=FFCC00&style=flat-square)
 
 **Description**
 The `BoycoBurrZap` contract currently has no way to recover tokens or ETH that might accidentally get sent to it. While the contract is designed to immediately use any deposited tokens in the happy path, Royco might accidentally send tokens or ETH directly to the contract address.
@@ -336,8 +396,8 @@ event RecoveredETH(address indexed recipient, uint256 amount);
 ---
 
 
-### [Move interfaces from BoycoBurrZap.sol to dedicated interface files](https://github.com/akiratechhq/review-xave-boyco-2024-12/issues/7)
-![Issue status: Open](https://img.shields.io/static/v1?label=Status&message=Open&color=5856D6&style=flat-square) ![Informational](https://img.shields.io/static/v1?label=Severity&message=Informational&color=34C759&style=flat-square)
+### [Move interfaces from BoycoBurrZap.sol to dedicated interface files](https://github.com/akiratechhq/review-burrbear-boyco-2024-12/issues/7)
+![Issue status: Fixed](https://img.shields.io/static/v1?label=Status&message=Fixed&color=5AC8FA&style=flat-square) ![Informational](https://img.shields.io/static/v1?label=Severity&message=Informational&color=34C759&style=flat-square)
 
 **Description**
 Currently, the `BoycoBurrZap.sol` contract contains several interfaces at the bottom of the file:
@@ -368,8 +428,8 @@ This change will:
 ---
 
 
-### [Standardize error message handling](https://github.com/akiratechhq/review-xave-boyco-2024-12/issues/6)
-![Issue status: Open](https://img.shields.io/static/v1?label=Status&message=Open&color=5856D6&style=flat-square) ![Informational](https://img.shields.io/static/v1?label=Severity&message=Informational&color=34C759&style=flat-square)
+### [Standardize error message handling](https://github.com/akiratechhq/review-burrbear-boyco-2024-12/issues/6)
+![Issue status: Fixed](https://img.shields.io/static/v1?label=Status&message=Fixed&color=5AC8FA&style=flat-square) ![Informational](https://img.shields.io/static/v1?label=Severity&message=Informational&color=34C759&style=flat-square)
 
 **Description**
 Currently, the contract has inconsistent error handling. Most errors are defined as constant strings at the top of the contract, but some error messages are directly written in the require statements. For example:
